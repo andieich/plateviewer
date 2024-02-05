@@ -1,0 +1,117 @@
+---
+title: "Plate Viewer"
+format: 
+  html:
+    page-layout: custom
+    theme: united
+server: shiny
+---
+
+```{r}
+#| context: setup
+#| include: false
+#| message: false
+#| warning: false
+
+
+library(gt)
+library(tidyverse)
+library(readxl)
+library(here)
+letters <- LETTERS[1:8]
+
+
+dat <- read_excel(here("data/sel_GBS.xlsx"), sheet = "check") %>%
+  mutate(row_letter = LETTERS[row])
+```
+
+```{r}
+#| panel: sidebar
+
+
+#select values
+vars_colnames <- names(dat[4:ncol(dat)])
+
+selectInput('disp_vals', 'Displayed Values', vars_colnames, selected = vars_colnames[[9]])
+
+
+plates <- setdiff(unique(dat$plate), "Plate")
+
+
+selectInput('plate_no', 'Plate', choices = plates, selected = plates[1])
+
+```
+
+```{r}
+#| panel: fill
+gt_output(outputId = "table1")
+```
+
+```{r}
+#| context: server
+
+
+selectedData <- reactive({
+  
+dat %>% 
+    dplyr::select(plate, col, row_letter, !! sym(input$disp_vals)) %>% 
+    filter(plate == input$plate_no) %>% 
+    select(-plate) %>% 
+    rename(row = row_letter) %>% 
+    mutate(vals = !!sym(input$disp_vals))%>% 
+    select(-!!sym(input$disp_vals)) %>% 
+    pivot_wider(names_from = col, values_from = vals) %>% 
+    gt() %>% 
+    sub_missing(missing_text = "-") %>% 
+    tab_style(
+      style = cell_fill(color = "grey90"),
+      locations = cells_column_labels()) %>% 
+     tab_style(
+       style = cell_text(weight = "bold",
+                         align = "center"),
+       locations = cells_column_labels()) %>% 
+    tab_style(
+      style = cell_borders(
+        sides = c("top", "bottom", "left", "right"),
+      color = "grey50",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  ) %>% 
+    
+    tab_style(
+      style = cell_fill(color = "grey90"),
+      locations = cells_body(columns = "row")) %>% 
+     tab_style(
+       style = cell_text(weight = "bold",
+                         align = "center"),
+       locations = cells_body(columns = "row")) %>% 
+   # fmt_number(decimals  = 1, 
+   #            drop_trailing_zeros = F) %>% 
+   tab_header(
+    title = paste("Plate", input$plate_no)) %>%
+    tab_style(
+       style = cell_text(font = system_fonts(name = "monospace-code")),
+       locations = cells_body()) %>% 
+  #   opt_interactive(
+  #     use_sorting = F,
+  #   use_search = F,
+  #   use_filters = F,
+  #   use_resizers = F,
+  #   use_highlight = TRUE,
+  #   use_compact_mode = F,
+  #   use_text_wrapping = F,
+  #   use_page_size_select = F
+  # ) %>% 
+      cols_width(
+    row ~ px(40),
+    everything() ~ px(70)
+  )
+  })
+
+
+output$table1 <-  render_gt({
+  selectedData()
+})
+```

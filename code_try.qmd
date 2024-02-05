@@ -1,0 +1,152 @@
+---
+title: "Iris K-Means Clustering"
+format: 
+  html:
+    page-layout: custom
+server: shiny
+---
+
+```{r data-chunk}
+#| context: setup
+#| include: false
+#| message: false
+#| warning: false
+
+
+library(gt)
+library(tidyverse)
+library(readxl)
+library(here)
+letters <- LETTERS[1:8]
+
+# 
+# dat <- read_excel(here("data/sel_GBS.xlsx")) %>% 
+#   mutate(row_letter = LETTERS[row])
+```
+
+```{r}
+#| panel: sidebar
+
+fileInput('file1', 'Choose xlsx file',
+            accept = c(".xlsx"))
+
+
+
+#select values
+#vars_colnames <- names(dat[4:ncol(dat)])
+
+#selectInput('disp_vals', 'Displayed Values', vars_colnames, selected = vars_colnames[[9]])
+
+#selectInput('plate_no', 'Plate', choices = c())
+selectInput("columns_sel", "Choose column", choices = c()) # no choices before uploading
+
+
+
+
+```
+
+```{r}
+#| panel: fill
+gt_output(outputId = "table1")
+```
+
+```{r}
+#| context: server
+
+
+read_data <- reactive({
+    validate(need(input$file1,""))
+    inFile <- input$file1
+    if (is.null(inFile))
+      return(NULL)
+    data <- read_excel(inFile$datapath)
+    return(data)    
+  })
+  
+  get_columns <- reactive({
+    data_3 <- read_data()
+    col_names <- colnames(data_3)
+    updateSelectInput(session,"columns_sel",choices=col_names)    
+    return(col_names)    
+  })
+
+  
+  
+# get_plate_no <- reactive({
+#     plate_no <- read_data() %>% 
+#       pull(plate)
+#   
+#     plate_no <- setdiff(unique(plate_no), "Plate")
+#     
+#     updateSelectInput(session,"plate_no",choices=plate_no)    
+#     return(col_names)    
+#   })
+
+
+selectedData <- reactive({
+#dat <- info()
+  
+  read_data() %>% 
+    dplyr::select(plate, col, row_letter, !! sym(input$disp_vals)) %>% 
+   # filter(plate == input$plate_no) %>% 
+    filter(plate == 1) %>% 
+    select(-plate) %>% 
+    rename(row = row_letter) %>% 
+    mutate(vals = !!sym(input$disp_vals))%>% 
+    select(-!!sym(input$disp_vals)) %>% 
+   # mutate(vals = as.numeric(vals)) %>% 
+    pivot_wider(names_from = col, values_from = vals) %>% 
+    gt() %>% 
+    sub_missing(missing_text = "-") %>% 
+    tab_style(
+      style = cell_fill(color = "grey90"),
+      locations = cells_column_labels()) %>% 
+     tab_style(
+       style = cell_text(weight = "bold",
+                         align = "center"),
+       locations = cells_column_labels()) %>% 
+    tab_style(
+      style = cell_borders(
+        sides = c("top", "bottom", "left", "right"),
+      color = "grey50",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  ) %>% 
+    
+    tab_style(
+      style = cell_fill(color = "grey90"),
+      locations = cells_body(columns = "row")) %>% 
+     tab_style(
+       style = cell_text(weight = "bold",
+                         align = "center"),
+       locations = cells_body(columns = "row")) %>% 
+   fmt_number(decimals  = 1, 
+              drop_trailing_zeros = F) %>% 
+#    tab_header(
+ #     title = paste("Plate", input$plate_no)) %>% 
+    tab_style(
+       style = cell_text(font = system_fonts(name = "monospace-code")),
+       locations = cells_body()) %>% 
+  #   opt_interactive(
+  #     use_sorting = F,
+  #   use_search = F,
+  #   use_filters = F,
+  #   use_resizers = F,
+  #   use_highlight = TRUE,
+  #   use_compact_mode = F,
+  #   use_text_wrapping = F,
+  #   use_page_size_select = F
+  # ) %>% 
+      cols_width(
+    row ~ px(40),
+    everything() ~ px(70)
+  )
+  })
+
+
+output$table1 <-  render_gt({
+  selectedData()
+})
+```

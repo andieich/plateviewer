@@ -1,0 +1,103 @@
+---
+title: "Plate Viewer"
+format: 
+  html:
+    page-layout: custom
+    theme: united
+server: shiny
+---
+
+```{r}
+#| context: setup
+#| include: false
+#| message: false
+#| warning: false
+
+
+library(DT)
+library(gt)
+library(tidyverse)
+library(readxl)
+library(here)
+letters <- LETTERS[1:8]
+
+
+dat <- read_excel(here("data/sel_GBS_2.xlsx"), sheet = "check") %>%
+  mutate(row_letter = LETTERS[row])
+```
+
+```{r}
+#| panel: sidebar
+
+
+#select values
+vars_colnames <- names(dat[4:ncol(dat)])
+
+selectInput('disp_vals', 'Displayed Values', vars_colnames, selected = vars_colnames[[9]])
+
+
+plates <- setdiff(unique(dat$plate), "Plate")
+
+
+selectInput('plate_no', 'Plate', choices = plates, selected = plates[1])
+
+
+
+```
+
+```{r}
+#| panel: fill
+tags$style(HTML('table.dataTable tr.selected td, table.dataTable td.selected {background-color: lightgreen !important;}'))
+
+tags$style(HTML('table.dataTable.hover tbody tr:hover, table.dataTable.display tbody tr:hover {background-color: #cccccc !important;}'))
+
+
+DT::dataTableOutput("table1", width = "500px")
+```
+
+```{r}
+#| context: server
+
+
+selectedData <- reactive({
+  
+dat_exp <- dat %>% 
+    dplyr::select(plate, col, row_letter, !! sym(input$disp_vals)) %>% 
+    filter(plate == input$plate_no) %>% 
+    select(-plate) %>% 
+    rename(row = row_letter) %>% 
+    mutate(vals = !!sym(input$disp_vals))%>% 
+    select(-!!sym(input$disp_vals)) %>% 
+    pivot_wider(names_from = col, values_from = vals) %>% 
+    gt() %>% 
+    sub_missing(missing_text = "-") %>% 
+    as.data.frame() 
+
+rownames(dat_exp) <- dat_exp$row
+
+
+dat_exp %>% 
+  select(-row) %>% 
+    DT::datatable(selection = list(mode="multiple", target="cell"), 
+                  caption = htmltools::tags$caption(paste("Plate", input$plate_no), style="font-weight:bold"),
+                  editable = F,
+                  filter = "none",
+                  options = list(dom='t',
+                                 ordering=F,
+                                 columnDefs = list(list(width = '70px', 
+                                                        targets = "_all")),
+                                 initComplete = JS(
+                                   "function(settings, json) {",
+                                   "$(this.api().table().header()).css({'background-color': '#cccccc'});",
+                                   "}")
+                                 ),
+                  rownames = T) %>% 
+  formatStyle(0, backgroundColor = "#cccccc")
+  })
+
+
+output$table1 <-  DT::renderDataTable({
+  selectedData()
+})
+
+```
